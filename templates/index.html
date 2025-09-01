@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Weld Inspector</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f0f2f5; margin: 0; }
+        h1 { color: #333; }
+        #container { display: flex; flex-direction: column; align-items: center; background-color: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; margin-top: 20px; }
+        video { border-radius: 8px; max-width: 90vw; max-height: 60vh; }
+        #result { font-size: 3em; font-weight: bold; margin: 20px 0; padding: 10px 20px; border-radius: 10px; color: white; transition: background-color 0.3s; }
+        .ok { background-color: #28a745; }
+        .ng { background-color: #dc3545; }
+        .neutral { background-color: #6c757d; }
+        button { font-size: 1.2em; padding: 10px 20px; border-radius: 8px; border: none; background-color: #007bff; color: white; cursor: pointer; margin-bottom: 20px; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>AI Weld Inspector</h1>
+    <div id="container">
+        <button id="startButton">🚀 Start Camera</button>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <div id="result" class="neutral">Waiting...</div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const resultDiv = document.getElementById('result');
+        const startButton = document.getElementById('startButton');
+        let predictionInterval;
+
+        startButton.onclick = async () => {
+            try {
+                // ขออนุญาตใช้กล้อง
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' } // พยายามใช้กล้องหลัง
+                });
+                video.srcObject = stream;
+                startButton.style.display = 'none'; // ซ่อนปุ่มเมื่อกล้องเปิดแล้ว
+
+                // เริ่มส่งภาพไปทำนายผลทุกๆ 1 วินาที
+                predictionInterval = setInterval(predict, 1000);
+
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                resultDiv.textContent = "Camera Error!";
+            }
+        };
+
+        async function predict() {
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            // วาดภาพจาก video ลงบน canvas ที่ซ่อนไว้
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // แปลงภาพใน canvas เป็นข้อมูลรูปภาพ (Base64)
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            // ส่งข้อมูลรูปภาพไปที่ Backend (app.py) ของเรา
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            // รับผลลัพธ์กลับมา
+            const data = await response.json();
+
+            // อัปเดตหน้าจอเพื่อแสดงผล
+            resultDiv.textContent = `${data.result} (${data.confidence})`;
+            resultDiv.className = 'result ' + (data.result === 'OK' ? 'ok' : 'ng');
+        }
+    </script>
+</body>
+</html>
